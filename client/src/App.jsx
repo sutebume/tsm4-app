@@ -60,34 +60,41 @@ export default function App() {
       const whMap = {};
       wh.forEach(r => { whMap[r.date] = r.hours; });
 
-      // For engineers: only fetch their own entries (server enforces this anyway)
-      // For admin/manager: fetch all engineers' entries
+      // Fetch strategy:
+      // ALL roles use /entries/all for Team tab aggregation
+      // Engineers get their own detail from /entries/:id for Individual tab
+      // Write access remains owner-restricted on the server
       const entriesMap = {};
 
+      // Initialize empty maps for all engineers
+      engs.forEach(e => { entriesMap[e.id] = {}; });
+
       if (currentUser.role === 'engineer' && currentUser.engineer_id) {
-        // Only fetch own entries — avoids server 403s for other engineers
-        const rows = await api.getAllEntries(currentUser.engineer_id);
+        // Step 1: fetch own detailed entries for Individual tab
+        const ownRows = await api.getAllEntries(currentUser.engineer_id);
         const byDate = {};
-        rows.forEach(r => {
+        ownRows.forEach(r => {
           if (!byDate[r.date]) byDate[r.date] = [];
           byDate[r.date].push(r);
         });
         entriesMap[currentUser.engineer_id] = byDate;
+
+        // Step 2: fetch all entries for Team tab (read-only aggregation)
+        const allRows = await api.getAllEntriesForAll();
+        allRows.forEach(r => {
+          if (r.engineer_id === currentUser.engineer_id) return; // already have own
+          if (!entriesMap[r.engineer_id]) entriesMap[r.engineer_id] = {};
+          if (!entriesMap[r.engineer_id][r.date]) entriesMap[r.engineer_id][r.date] = [];
+          entriesMap[r.engineer_id][r.date].push(r);
+        });
       } else {
-        // Admin/manager: fetch all
-        await Promise.all(engs.map(async (e) => {
-          try {
-            const rows = await api.getAllEntries(e.id);
-            const byDate = {};
-            rows.forEach(r => {
-              if (!byDate[r.date]) byDate[r.date] = [];
-              byDate[r.date].push(r);
-            });
-            entriesMap[e.id] = byDate;
-          } catch {
-            entriesMap[e.id] = {};
-          }
-        }));
+        // Admin/manager: single bulk fetch, group by engineer_id then date
+        const allRows = await api.getAllEntriesForAll();
+        allRows.forEach(r => {
+          if (!entriesMap[r.engineer_id]) entriesMap[r.engineer_id] = {};
+          if (!entriesMap[r.engineer_id][r.date]) entriesMap[r.engineer_id][r.date] = [];
+          entriesMap[r.engineer_id][r.date].push(r);
+        });
       }
 
       // Set all state at once — prevents partial renders

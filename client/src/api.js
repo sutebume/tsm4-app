@@ -24,6 +24,7 @@ export const api = {
   changePassword: (current_password, new_password) => request('POST', '/auth/change-password', { current_password, new_password }),
   getEntries: (engineerId, date) => request('GET', `/entries/${engineerId}/${date}`),
   getAllEntries: (engineerId) => request('GET', `/entries/${engineerId}`),
+  getAllEntriesForAll: () => request('GET', '/entries/all'),
   saveEntries: (engineerId, date, entries) => request('POST', `/entries/${engineerId}/${date}`, { entries }),
   getEngineers: () => request('GET', '/settings/engineers'),
   updateEngineers: (engineers) => request('PUT', '/settings/engineers', { engineers }),
