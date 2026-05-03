@@ -23,66 +23,156 @@ export default function App() {
   const [workdayHours, setWorkdayHours] = useState({});
   const [allEntries, setAllEntries] = useState({});
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [loading, setLoading] = useState(true); // start true — checking token
   const { toast, showToast } = useToast();
 
+  // On mount: check for existing valid token
   useEffect(() => {
     const token = localStorage.getItem('tsm4_token');
-    if (token) {
-      api.me().then(d => setUser(d.user)).catch(() => localStorage.removeItem('tsm4_token'));
+    if (!token) {
+      setLoading(false);
+      return;
     }
+    api.me()
+      .then(d => setUser(d.user))
+      .catch(() => {
+        // Token expired or invalid — clear it and show login
+        localStorage.removeItem('tsm4_token');
+        setLoading(false);
+      });
   }, []);
 
+  // Load all data whenever user changes
   useEffect(() => {
     if (!user) return;
-    loadSettings();
+    loadAllData(user);
   }, [user]);
 
-  async function loadSettings() {
-    const [engs, wh] = await Promise.all([api.getEngineers(), api.getWorkdayHours()]);
-    setEngineers(engs);
-    const map = {};
-    wh.forEach(r => { map[r.date] = r.hours; });
-    setWorkdayHours(map);
-    const entriesMap = {};
-    await Promise.all(engs.map(async (e) => {
-      const rows = await api.getAllEntries(e.id);
+  async function loadAllData(currentUser) {
+    setLoading(true);
+    try {
+      // Always load engineers and workday hours
+      const [engs, wh] = await Promise.all([
+        api.getEngineers(),
+        api.getWorkdayHours(),
+      ]);
+
+      const whMap = {};
+      wh.forEach(r => { whMap[r.date] = r.hours; });
+
+      // For engineers: only fetch their own entries (server enforces this anyway)
+      // For admin/manager: fetch all engineers' entries
+      const entriesMap = {};
+
+      if (currentUser.role === 'engineer' && currentUser.engineer_id) {
+        // Only fetch own entries — avoids server 403s for other engineers
+        const rows = await api.getAllEntries(currentUser.engineer_id);
+        const byDate = {};
+        rows.forEach(r => {
+          if (!byDate[r.date]) byDate[r.date] = [];
+          byDate[r.date].push(r);
+        });
+        entriesMap[currentUser.engineer_id] = byDate;
+      } else {
+        // Admin/manager: fetch all
+        await Promise.all(engs.map(async (e) => {
+          try {
+            const rows = await api.getAllEntries(e.id);
+            const byDate = {};
+            rows.forEach(r => {
+              if (!byDate[r.date]) byDate[r.date] = [];
+              byDate[r.date].push(r);
+            });
+            entriesMap[e.id] = byDate;
+          } catch {
+            entriesMap[e.id] = {};
+          }
+        }));
+      }
+
+      // Set all state at once — prevents partial renders
+      setEngineers(engs);
+      setWorkdayHours(whMap);
+      setAllEntries(entriesMap);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      // If unauthorized, token likely expired — force logout
+      if (err.message?.includes('token') || err.message?.includes('401')) {
+        handleSignOut();
+        return;
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshEntries(engineerId) {
+    try {
+      const rows = await api.getAllEntries(engineerId);
       const byDate = {};
       rows.forEach(r => {
         if (!byDate[r.date]) byDate[r.date] = [];
         byDate[r.date].push(r);
       });
-      entriesMap[e.id] = byDate;
-    }));
-    setAllEntries(entriesMap);
-  }
-
-  async function refreshEntries(engineerId) {
-    const rows = await api.getAllEntries(engineerId);
-    const byDate = {};
-    rows.forEach(r => {
-      if (!byDate[r.date]) byDate[r.date] = [];
-      byDate[r.date].push(r);
-    });
-    setAllEntries(prev => ({ ...prev, [engineerId]: byDate }));
+      setAllEntries(prev => ({ ...prev, [engineerId]: byDate }));
+    } catch (err) {
+      console.error('Failed to refresh entries:', err);
+    }
   }
 
   function handleLogin(u) {
     setUser(u);
-    // Reset to individual tab on login
     setActiveTab('individual');
   }
 
   function handleSignOut() {
     localStorage.removeItem('tsm4_token');
     setUser(null);
+    setEngineers([]);
+    setAllEntries({});
+    setWorkdayHours({});
     setActiveTab('individual');
+    setCalendarEntry(null);
+    setLoading(false);
+  }
+
+  // Still checking token on mount
+  if (loading && !user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: 'white', margin: '0 auto 16px' }}>T4</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>Loading…</div>
+        </div>
+      </div>
+    );
   }
 
   if (!user) return <Login onLogin={handleLogin} />;
 
-  // Intercept: force password change before entering app
+  // Force password change before entering app
   if (user.must_change_password) {
     return <ChangePassword user={user} onComplete={(updatedUser) => setUser(updatedUser)} />;
+  }
+
+  // Data still loading after login
+  if (loading) {
+    return (
+      <div className="app-shell">
+        {/* Header */}
+        <div style={{ background: 'var(--red)', padding: '12px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>TSM4 Billability</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>{user.name} · <span style={{ textTransform: 'capitalize' }}>{user.role}</span></div>
+          </div>
+          <button onClick={handleSignOut} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px' }}>Sign Out</button>
+        </div>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray-500)', fontSize: 13 }}>
+          <div style={{ marginBottom: 8 }}>⏳</div>
+          Loading your data…
+        </div>
+      </div>
+    );
   }
 
   const allowedTabs = TABS_BY_ROLE[user.role] || ['individual', 'team'];
@@ -128,10 +218,10 @@ export default function App() {
             api.updateEngineers(newEngineers),
             api.updateWorkdayHours(newHours),
           ]);
-          await loadSettings();
+          await loadAllData(user);
           showToast('Settings saved ✓');
         }}
-        onEngineersChange={loadSettings}
+        onEngineersChange={() => loadAllData(user)}
         showToast={showToast}
       />
     );
@@ -148,7 +238,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setShowChangePassword(true)} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px', whiteSpace: 'nowrap' }}>
+          <button onClick={() => setShowChangePassword(true)} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px' }}>
             🔑
           </button>
           <button onClick={handleSignOut} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px' }}>

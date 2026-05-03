@@ -27,7 +27,7 @@ router.post('/login', (req, res) => {
     must_change_password: user.must_change_password === 1,
   };
 
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
   res.json({ token, user: payload });
 });
 
@@ -81,7 +81,7 @@ router.post('/change-password', auth, (req, res) => {
     engineer_id: user.engineer_id || null,
     must_change_password: false,
   };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
 
   res.json({ success: true, token, user: payload });
 });
