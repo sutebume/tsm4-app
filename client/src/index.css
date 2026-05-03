@@ -22,10 +22,18 @@
   padding: 0;
 }
 
+html {
+  /* Prevent font size inflation on mobile */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: 'DM Sans', sans-serif;
   background: #f0f0f0;
   min-height: 100vh;
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
 button {
@@ -33,13 +41,106 @@ button {
   font-family: inherit;
   border: none;
   background: none;
+  /* Prevent tap highlight on mobile */
+  -webkit-tap-highlight-color: transparent;
 }
 
-input {
+input, select, textarea {
   font-family: inherit;
+  /* Prevent zoom on focus on iOS (font-size must be >= 16px or use this) */
+  font-size: 16px;
 }
 
-/* Toast */
+/* Override input font-size back for desktop — we handle iOS zoom via meta viewport */
+@media (min-width: 641px) {
+  input, select, textarea {
+    font-size: inherit;
+  }
+}
+
+/* ── App Shell ─────────────────────────────────────────────── */
+.app-shell {
+  width: 100%;
+  min-height: 100vh;
+  background: white;
+}
+
+@media (min-width: 641px) {
+  .app-shell {
+    max-width: 520px;
+    margin: 0 auto;
+    min-height: 100vh;
+    box-shadow: 0 0 40px rgba(0,0,0,0.12);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    max-width: 600px;
+  }
+}
+
+/* ── Login Page ────────────────────────────────────────────── */
+.login-page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+@media (min-width: 641px) {
+  .login-page {
+    flex-direction: row;
+  }
+}
+
+.login-left {
+  display: none;
+  width: 42%;
+  background: var(--red);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+@media (min-width: 641px) {
+  .login-left {
+    display: flex;
+  }
+}
+
+.login-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  background: white;
+  min-height: 100vh;
+}
+
+@media (min-width: 641px) {
+  .login-right {
+    padding: 40px;
+    min-height: unset;
+  }
+}
+
+/* Mobile login header (shown only on mobile) */
+.login-mobile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+@media (min-width: 641px) {
+  .login-mobile-header {
+    display: none;
+  }
+}
+
+/* ── Toast ─────────────────────────────────────────────────── */
 .toast {
   position: fixed;
   bottom: 24px;
@@ -54,7 +155,24 @@ input {
   z-index: 1000;
   transition: transform 0.3s ease;
   white-space: nowrap;
+  max-width: 90vw;
+  text-align: center;
 }
+
 .toast.show {
   transform: translateX(-50%) translateY(0);
+}
+
+/* ── Spinner animation ─────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Utility ───────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
 }

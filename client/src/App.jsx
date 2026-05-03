@@ -138,20 +138,20 @@ export default function App() {
   };
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: 'white', boxShadow: '0 0 40px rgba(0,0,0,0.12)' }}>
+    <div className="app-shell">
       {/* Header */}
-      <div style={{ background: 'var(--red)', padding: '16px 20px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ background: 'var(--red)', padding: '12px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'white' }}>TSM4 Billability</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>TSM4 Billability</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>
             {user.name} · <span style={{ textTransform: 'capitalize', opacity: 0.8 }}>{user.role}</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowChangePassword(true)} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 10px' }}>
-            🔑 Password
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setShowChangePassword(true)} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px', whiteSpace: 'nowrap' }}>
+            🔑
           </button>
-          <button onClick={handleSignOut} style={{ fontSize: 12, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 10px' }}>
+          <button onClick={handleSignOut} style={{ fontSize: 11, fontWeight: 600, color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '5px 8px' }}>
             Sign Out
           </button>
         </div>
