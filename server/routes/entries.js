@@ -67,13 +67,13 @@ router.post('/:engineerId/:date', auth, (req, res) => {
 
   const deleteStmt = db.prepare('DELETE FROM entries WHERE engineer_id = ? AND date = ?');
   const insertStmt = db.prepare(
-    'INSERT INTO entries (engineer_id, date, activity, hours, wbs) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO entries (engineer_id, date, activity, hours, wbs, ot) VALUES (?, ?, ?, ?, ?, ?)'
   );
 
   const saveAll = db.transaction(() => {
     deleteStmt.run(engineerId, date);
     for (const e of entries) {
-      insertStmt.run(engineerId, date, e.activity, parseFloat(e.hours) || 0, e.wbs);
+      insertStmt.run(engineerId, date, e.activity, parseFloat(e.hours) || 0, e.wbs, e.ot || 'no');
     }
   });
 

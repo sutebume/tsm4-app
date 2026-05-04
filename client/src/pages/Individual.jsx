@@ -149,7 +149,6 @@ export default function Individual({ engineers, allEntries, workdayHours, onDayC
 }
 
 function CycleSummary({ weeks, entries, workdayHours }) {
-  // ALL days in the cycle — weekends included if hours configured
   const allDays = weeks.flat();
 
   const totalAvailable = allDays.reduce((s, d) => {
@@ -159,6 +158,7 @@ function CycleSummary({ weeks, entries, workdayHours }) {
 
   let wbsHours = 0;
   let noWbsHours = 0;
+  let otHours = 0;
 
   for (const d of allDays) {
     const key = formatDateKey(d);
@@ -167,19 +167,24 @@ function CycleSummary({ weeks, entries, workdayHours }) {
       const h = parseFloat(e.hours) || 0;
       if (e.wbs === 'yes') wbsHours += h;
       else noWbsHours += h;
+      if (e.ot === 'yes') otHours += h;
     }
   }
 
   const totalLogged = wbsHours + noWbsHours;
-  const missingHours = Math.max(0, totalAvailable - totalLogged);
+  const missingToComplete = Math.max(0, totalAvailable - totalLogged);
 
-  const row = (icon, label, value, valueColor = 'var(--gray-900)') => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--gray-100)' }}>
+  // Hours needed to reach 80% billability target
+  const target80Hours = totalAvailable * 0.8;
+  const missingTo80 = Math.max(0, target80Hours - totalLogged);
+  const currentPct = totalAvailable > 0 ? Math.round((totalLogged / totalAvailable) * 100) : 0;
+  const above80 = currentPct >= 80;
+
+  const row = (icon, label, value, valueColor = 'var(--gray-900)', last = false) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: last ? 'none' : '1px solid var(--gray-100)' }}>
       <span style={{ fontSize: 15 }}>{icon}</span>
       <span style={{ flex: 1, fontSize: 13, color: 'var(--gray-700)' }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 700, color: valueColor }}>
-        {value}h
-      </span>
+      <span style={{ fontSize: 14, fontWeight: 700, color: valueColor }}>{value}</span>
     </div>
   );
 
@@ -188,16 +193,30 @@ function CycleSummary({ weeks, entries, workdayHours }) {
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '10px 0 4px' }}>
         Cycle Summary
       </div>
-      {row('✅', 'Hours w/ WBS', wbsHours.toFixed(1), 'var(--red)')}
-      {row('📋', 'Hours w/o WBS', noWbsHours.toFixed(1), 'var(--gray-700)')}
-      {row('⏱️', 'Total Logged', totalLogged.toFixed(1), 'var(--gray-900)')}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0' }}>
-        <span style={{ fontSize: 15 }}>{missingHours === 0 ? '🎯' : '⚠️'}</span>
-        <span style={{ flex: 1, fontSize: 13, color: 'var(--gray-700)' }}>Missing hours to complete cycle</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: missingHours === 0 ? '#27ae60' : '#e67e22' }}>
-          {missingHours === 0 ? 'Complete ✓' : `${missingHours.toFixed(1)}h`}
-        </span>
-      </div>
+      {row('✅', 'Hours w/ WBS', `${wbsHours.toFixed(1)}h`, 'var(--red)')}
+      {row('📋', 'Hours w/o WBS', `${noWbsHours.toFixed(1)}h`, 'var(--gray-700)')}
+      {row('🕐', 'Overtime (OT) Hours', `${otHours.toFixed(1)}h`, otHours > 0 ? '#1976D2' : 'var(--gray-400)')}
+      {row('⏱️', 'Total Logged', `${totalLogged.toFixed(1)}h`, 'var(--gray-900)')}
+
+      {/* Divider */}
+      <div style={{ height: 1, background: 'var(--gray-200)', margin: '4px 0' }} />
+
+      {/* Missing to 80% */}
+      {row(
+        above80 ? '🎯' : '📈',
+        'Missing hours to reach 80%',
+        above80 ? 'Target met ✓' : `${missingTo80.toFixed(1)}h`,
+        above80 ? '#27ae60' : '#e67e22',
+      )}
+
+      {/* Missing to complete cycle */}
+      {row(
+        missingToComplete === 0 ? '✨' : '⚠️',
+        'Missing hours to complete cycle',
+        missingToComplete === 0 ? 'Complete ✓' : `${missingToComplete.toFixed(1)}h`,
+        missingToComplete === 0 ? '#27ae60' : '#c0392b',
+        true,
+      )}
     </div>
   );
 }
