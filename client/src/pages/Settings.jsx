@@ -266,8 +266,9 @@ function UsersSection({ showToast }) {
   const [engineers, setEngineers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState(null);
-  const [form, setForm] = useState({ username: '', password: '', role: 'engineer', name: '', engineer_id: '' });
+  const [form, setForm] = useState({ username: '', password: '', role: 'engineer', name: '', engineer_id: '', telegram_id: '' });
   const [loading, setLoading] = useState(false);
+  const [testingId, setTestingId] = useState(null);
 
   useEffect(() => {
     load();
@@ -281,13 +282,13 @@ function UsersSection({ showToast }) {
 
   function openAdd() {
     setEditUser(null);
-    setForm({ username: '', password: '', role: 'engineer', name: '', engineer_id: '' });
+    setForm({ username: '', password: '', role: 'engineer', name: '', engineer_id: '', telegram_id: '' });
     setShowForm(true);
   }
 
   function openEdit(u) {
     setEditUser(u);
-    setForm({ username: u.username, password: '', role: u.role, name: u.name, engineer_id: u.engineer_id || '' });
+    setForm({ username: u.username, password: '', role: u.role, name: u.name, engineer_id: u.engineer_id || '', telegram_id: u.telegram_id || '' });
     setShowForm(true);
   }
 
@@ -297,7 +298,11 @@ function UsersSection({ showToast }) {
     if (form.role === 'engineer' && !form.engineer_id) return showToast('Please link this user to an engineer profile');
     setLoading(true);
     try {
-      const payload = { ...form, engineer_id: form.engineer_id ? parseInt(form.engineer_id) : null };
+      const payload = {
+        ...form,
+        engineer_id: form.engineer_id ? parseInt(form.engineer_id) : null,
+        telegram_id: form.telegram_id.trim() || null,
+      };
       if (editUser) {
         await api.updateUser(editUser.id, payload);
         showToast('User updated ✓');
@@ -309,6 +314,17 @@ function UsersSection({ showToast }) {
       await load();
     } catch (e) { showToast(e.message); }
     setLoading(false);
+  }
+
+  async function handleTestReminder(u) {
+    setTestingId(u.id);
+    try {
+      await api.testReminder(u.telegram_id, u.name);
+      showToast(`Test message sent to ${u.name} ✓`);
+    } catch (e) {
+      showToast(`Failed: ${e.message}`);
+    }
+    setTestingId(null);
   }
 
   async function handleDelete(id, username) {
@@ -345,17 +361,38 @@ function UsersSection({ showToast }) {
           const badge = roleBadge(u.role);
           const linked = getLinkedEngineer(u.engineer_id);
           return (
-            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-900)' }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
-                  @{u.username}
-                  {linked && <span style={{ marginLeft: 6, color: 'var(--red)' }}>→ {linked.name}</span>}
+            <div key={u.id} style={{ padding: '10px 12px', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-900)' }}>{u.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                    @{u.username}
+                    {linked && <span style={{ marginLeft: 6, color: 'var(--red)' }}>→ {linked.name}</span>}
+                  </div>
                 </div>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                <button onClick={() => openEdit(u)} style={{ fontSize: 11, color: 'var(--red)', border: '1px solid var(--red-mid)', borderRadius: 6, padding: '4px 8px', background: 'var(--red-light)' }}>Edit</button>
+                <button onClick={() => handleDelete(u.id, u.username)} style={{ fontSize: 11, color: '#888', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px' }}>✕</button>
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: badge.bg, color: badge.color }}>{badge.label}</span>
-              <button onClick={() => openEdit(u)} style={{ fontSize: 11, color: 'var(--red)', border: '1px solid var(--red-mid)', borderRadius: 6, padding: '4px 8px', background: 'var(--red-light)' }}>Edit</button>
-              <button onClick={() => handleDelete(u.id, u.username)} style={{ fontSize: 11, color: '#888', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px' }}>✕</button>
+              {/* Telegram row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--gray-100)' }}>
+                {u.telegram_id ? (
+                  <>
+                    <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                      ✈️ <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>{u.telegram_id}</span>
+                    </span>
+                    <button
+                      onClick={() => handleTestReminder(u)}
+                      disabled={testingId === u.id}
+                      style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: '#1976D2', border: '1px solid #90CAF9', borderRadius: 6, padding: '3px 10px', background: '#E3F2FD', cursor: 'pointer' }}
+                    >
+                      {testingId === u.id ? 'Sending…' : '📨 Test'}
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>✈️ No Telegram ID — reminders disabled</span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -418,6 +455,26 @@ function UsersSection({ showToast }) {
               </div>
             </div>
           )}
+
+          {/* Telegram ID */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>
+              TELEGRAM USER ID
+              <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--gray-400)', marginLeft: 6 }}>
+                (optional — for reminders)
+              </span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 1627298638"
+              value={form.telegram_id}
+              onChange={e => setForm(p => ({ ...p, telegram_id: e.target.value }))}
+              style={{ width: '100%', border: '1.5px solid var(--gray-200)', borderRadius: 8, padding: '9px 12px', fontSize: 13 }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+              Engineer must message @tsm4billability_bot on Telegram first, then share their Telegram ID with you
+            </div>
+          </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={handleSave} disabled={loading} style={{ ...btnStyle, flex: 1 }}>
