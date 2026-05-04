@@ -5,7 +5,7 @@ import {
 } from '../utils/billing';
 import { api } from '../api';
 
-const SECTION = { HOURS: 'hours', ENGINEERS: 'engineers', USERS: 'users', BACKUP: 'backup' };
+const SECTION = { HOURS: 'hours', ENGINEERS: 'engineers', USERS: 'users', BACKUP: 'backup', REMINDER: 'reminder' };
 
 export default function Settings({ engineers, workdayHours, onSave, onEngineersChange, showToast }) {
   const [section, setSection] = useState(SECTION.HOURS);
@@ -19,6 +19,7 @@ export default function Settings({ engineers, workdayHours, onSave, onEngineersC
           { key: SECTION.ENGINEERS, label: 'Engineers' },
           { key: SECTION.USERS, label: 'Users' },
           { key: SECTION.BACKUP, label: 'Backup' },
+          { key: SECTION.REMINDER, label: '🔔 Alerts' },
         ].map(s => (
           <button key={s.key} onClick={() => setSection(s.key)} style={{
             flex: 1, padding: '8px 4px', fontSize: 12, fontWeight: 600, borderRadius: 8,
@@ -46,6 +47,9 @@ export default function Settings({ engineers, workdayHours, onSave, onEngineersC
       )}
       {section === SECTION.BACKUP && (
         <BackupSection showToast={showToast} />
+      )}
+      {section === SECTION.REMINDER && (
+        <ReminderSection showToast={showToast} />
       )}
     </div>
   );
@@ -593,6 +597,115 @@ function BackupSection({ showToast }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Reminder Settings ────────────────────────────────────────
+function ReminderSection({ showToast }) {
+  const [appUrl, setAppUrl] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getReminderConfig().then(cfg => {
+      setAppUrl(cfg.app_url || '');
+      setMessage(cfg.reminder_message || '');
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateReminderConfig({ app_url: appUrl, reminder_message: message });
+      showToast('Reminder settings saved ✓');
+    } catch (e) {
+      showToast('Save failed: ' + e.message);
+    }
+    setSaving(false);
+  };
+
+  const handleReset = () => {
+    setMessage([
+      `⏰ <b>TSM4 Billability Reminder</b>`,
+      ``,
+      `Hi <b>{name}</b>! 👋`,
+      ``,
+      `You have <b>{count} missing {days}</b> in the current billing cycle:`,
+      ``,
+      `{day_list}`,
+      ``,
+      `Please open TSM4 and log your activities:`,
+      `🔗 {app_url}`,
+      ``,
+      `🎯 Target: <b>80%</b> billability per cycle`,
+    ].join('\n'));
+    showToast('Message reset to default');
+  };
+
+  if (loading) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--gray-500)' }}>Loading…</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)', marginBottom: 4 }}>Reminder Settings</div>
+      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 20 }}>
+        Configure the Telegram reminder message sent to engineers with missing entries.
+        Reminders run at 9AM and 6PM Philippine time daily.
+      </div>
+
+      {/* App URL */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={labelStyle}>APP URL <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', color: 'var(--gray-400)' }}>(included in reminder messages)</span></label>
+        <input
+          type="text"
+          placeholder="e.g. http://123.456.789.0"
+          value={appUrl}
+          onChange={e => setAppUrl(e.target.value)}
+          style={{ width: '100%', border: '1.5px solid var(--gray-200)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}
+        />
+      </div>
+
+      {/* Message template */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <label style={labelStyle}>MESSAGE TEMPLATE</label>
+          <button onClick={handleReset} style={{ fontSize: 11, color: 'var(--gray-500)', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '3px 8px' }}>
+            Reset to default
+          </button>
+        </div>
+        <textarea
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          rows={14}
+          style={{ width: '100%', border: '1.5px solid var(--gray-200)', borderRadius: 8, padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6, resize: 'vertical' }}
+        />
+      </div>
+
+      {/* Available variables */}
+      <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '10px 12px', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-700)', marginBottom: 6 }}>AVAILABLE VARIABLES</div>
+        {[
+          ['{name}', "Engineer's display name"],
+          ['{count}', 'Number of missing days'],
+          ['{days}', '"day" or "days" (auto-plural)'],
+          ['{day_list}', 'Bullet list of missing dates'],
+          ['{app_url}', 'App URL link'],
+        ].map(([v, desc]) => (
+          <div key={v} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+            <code style={{ fontSize: 11, background: 'var(--gray-200)', padding: '1px 6px', borderRadius: 4, minWidth: 80 }}>{v}</code>
+            <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>{desc}</span>
+          </div>
+        ))}
+        <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 6 }}>
+          HTML supported: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;
+        </div>
+      </div>
+
+      <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Saving…' : 'Save Reminder Settings'}
+      </button>
     </div>
   );
 }

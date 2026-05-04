@@ -75,36 +75,36 @@ router.put('/workday-hours', auth, adminOnly, (req, res) => {
 // GET /api/settings/users  (admin only)
 router.get('/users', auth, adminOnly, (req, res) => {
   const db = getDB();
-  const users = db.prepare('SELECT id, username, role, name, engineer_id FROM users ORDER BY id ASC').all();
+  const users = db.prepare('SELECT id, username, role, name, engineer_id, telegram_id FROM users ORDER BY id ASC').all();
   res.json(users);
 });
 
 // POST /api/settings/users  (add user)
 router.post('/users', auth, adminOnly, (req, res) => {
   const db = getDB();
-  const { username, password, role, name, engineer_id } = req.body;
+  const { username, password, role, name, engineer_id, telegram_id } = req.body;
   if (!username || !password || !role || !name)
     return res.status(400).json({ error: 'All fields required' });
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (existing) return res.status(409).json({ error: 'Username already exists' });
   const hash = bcrypt.hashSync(password, 10);
   const engId = engineer_id || null;
-  // New users created by admin must change password on first login
-  const result = db.prepare('INSERT INTO users (username, password, role, name, engineer_id, must_change_password) VALUES (?, ?, ?, ?, ?, ?)').run(username, hash, role, name, engId, 1);
-  res.json({ id: result.lastInsertRowid, username, role, name, engineer_id: engId });
+  const tgId = telegram_id || null;
+  const result = db.prepare('INSERT INTO users (username, password, role, name, engineer_id, telegram_id, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 1)').run(username, hash, role, name, engId, tgId);
+  res.json({ id: result.lastInsertRowid, username, role, name, engineer_id: engId, telegram_id: tgId });
 });
 
 // PUT /api/settings/users/:id  (update user)
 router.put('/users/:id', auth, adminOnly, (req, res) => {
   const db = getDB();
-  const { username, password, role, name, engineer_id } = req.body;
+  const { username, password, role, name, engineer_id, telegram_id } = req.body;
   const engId = engineer_id || null;
+  const tgId = telegram_id || null;
   if (password) {
     const hash = bcrypt.hashSync(password, 10);
-    // Admin resetting password forces must_change_password = 1 again
-    db.prepare('UPDATE users SET username=?, password=?, role=?, name=?, engineer_id=?, must_change_password=1 WHERE id=?').run(username, hash, role, name, engId, req.params.id);
+    db.prepare('UPDATE users SET username=?, password=?, role=?, name=?, engineer_id=?, telegram_id=?, must_change_password=1 WHERE id=?').run(username, hash, role, name, engId, tgId, req.params.id);
   } else {
-    db.prepare('UPDATE users SET username=?, role=?, name=?, engineer_id=? WHERE id=?').run(username, role, name, engId, req.params.id);
+    db.prepare('UPDATE users SET username=?, role=?, name=?, engineer_id=?, telegram_id=? WHERE id=?').run(username, role, name, engId, tgId, req.params.id);
   }
   res.json({ success: true });
 });
@@ -112,14 +112,72 @@ router.put('/users/:id', auth, adminOnly, (req, res) => {
 // DELETE /api/settings/users/:id
 router.delete('/users/:id', auth, adminOnly, (req, res) => {
   const db = getDB();
-  // Prevent deleting yourself
   if (parseInt(req.params.id) === req.user.id)
     return res.status(400).json({ error: 'Cannot delete your own account' });
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-module.exports = router;
+// GET /api/settings/reminder-config
+router.get('/reminder-config', auth, adminOnly, (req, res) => {
+  const db = getDB();
+  const rows = db.prepare("SELECT key, value FROM settings WHERE key IN ('app_url','reminder_message')").all();
+  const config = {};
+  rows.forEach(r => { config[r.key] = r.value; });
+  // Defaults
+  if (!config.app_url) config.app_url = process.env.APP_URL || '';
+  if (!config.reminder_message) config.reminder_message = [
+    `⏰ <b>TSM4 Billability Reminder</b>`,
+    ``,
+    `Hi <b>{name}</b>! 👋`,
+    ``,
+    `You have <b>{count} missing {days}</b> in the current billing cycle:`,
+    ``,
+    `{day_list}`,
+    ``,
+    `Please open TSM4 and log your activities:`,
+    `🔗 {app_url}`,
+    ``,
+    `🎯 Target: <b>80%</b> billability per cycle`,
+  ].join('\n');
+  res.json(config);
+});
+
+// PUT /api/settings/reminder-config
+router.put('/reminder-config', auth, adminOnly, (req, res) => {
+  const db = getDB();
+  const { app_url, reminder_message } = req.body;
+  const upsert = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+  if (app_url !== undefined) upsert.run('app_url', app_url);
+  if (reminder_message !== undefined) upsert.run('reminder_message', reminder_message);
+  res.json({ success: true });
+});
+
+// POST /api/settings/test-reminder
+router.post('/test-reminder', auth, adminOnly, async (req, res) => {
+  const { telegram_id, name } = req.body;
+  if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
+  try {
+    const { sendMessage } = require('../telegram');
+    const db = getDB();
+    const urlRow = db.prepare("SELECT value FROM settings WHERE key = 'app_url'").get();
+    const appUrl = urlRow?.value || process.env.APP_URL || '';
+    await sendMessage(telegram_id, [
+      `✅ <b>TSM4 Test Message</b>`,
+      ``,
+      `Hi <b>${name || 'there'}</b>! This is a test reminder from TSM4 Billability.`,
+      `Your Telegram is connected successfully! 🎉`,
+      ``,
+      appUrl ? `🔗 ${appUrl}` : '',
+    ].filter(Boolean).join('\n'));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Backup and restore routes follow below
+
 
 // GET /api/settings/backup  — download full DB as JSON
 router.get('/backup', auth, adminOnly, (req, res) => {
@@ -179,3 +237,23 @@ router.post('/restore', auth, adminOnly, (req, res) => {
     res.status(500).json({ error: 'Restore failed: ' + err.message });
   }
 });
+
+// POST /api/settings/test-reminder  — send test Telegram message to a user
+router.post('/test-reminder', auth, adminOnly, async (req, res) => {
+  const { telegram_id, name } = req.body;
+  if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
+  try {
+    const { sendMessage } = require('../telegram');
+    await sendMessage(telegram_id, [
+      `✅ <b>TSM4 Test Message</b>`,
+      ``,
+      `Hi <b>${name || 'there'}</b>! This is a test reminder from TSM4 Billability.`,
+      `Your Telegram is connected successfully! 🎉`,
+    ].join('\n'));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

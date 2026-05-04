@@ -37,4 +37,7 @@ export const api = {
   updateUser: (id, data) => request('PUT', `/settings/users/${id}`, data),
   deleteUser: (id) => request('DELETE', `/settings/users/${id}`),
   restoreBackup: (data) => request('POST', '/settings/restore', data),
+  testReminder: (telegram_id, name) => request('POST', '/settings/test-reminder', { telegram_id, name }),
+  getReminderConfig: () => request('GET', '/settings/reminder-config'),
+  updateReminderConfig: (data) => request('PUT', '/settings/reminder-config', data),
 };

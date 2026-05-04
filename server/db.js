@@ -54,6 +54,7 @@ function initDB() {
   const migrations = [
     `ALTER TABLE users ADD COLUMN engineer_id INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT NULL`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
