@@ -5,7 +5,7 @@ import {
 } from '../utils/billing';
 import RingsChart from '../components/RingsChart';
 
-export default function Team({ engineers, allEntries, workdayHours }) {
+export default function Team({ engineers, allEntries, engineerWorkdayHours }) {
   const today = new Date();
   const currentCycleMonth = getCycleStartMonth(today);
   const [cycleMonth, setCycleMonth] = useState(currentCycleMonth);
@@ -19,10 +19,11 @@ export default function Team({ engineers, allEntries, workdayHours }) {
 
   const engineerStats = engineers.map(e => {
     const entries = allEntries[e.id] || {};
-    const weekPcts = weeks.map(days => calcWeekBillability(entries, workdayHours, days));
+    const ewh = engineerWorkdayHours[e.id] || {};
+    const weekPcts = weeks.map(days => calcWeekBillability(entries, ewh, days));
     const totalAvailable = allDays.reduce((s, d) => {
       const defaultH = isWeekend(d) ? 0 : 8;
-      return s + (workdayHours[formatDateKey(d)] ?? defaultH);
+      return s + (ewh[formatDateKey(d)] ?? defaultH);
     }, 0);
     const totalLogged = allDays.reduce((s, d) => {
       const dayEntries = entries[formatDateKey(d)] || [];
@@ -38,10 +39,13 @@ export default function Team({ engineers, allEntries, workdayHours }) {
       : 0
   );
 
-  const teamTotalAvailable = allDays.reduce((s, d) => {
-    const defaultH = isWeekend(d) ? 0 : 8;
-    return s + (workdayHours[formatDateKey(d)] ?? defaultH);
-  }, 0) * (engineers.length || 1);
+  const teamTotalAvailable = engineers.reduce((total, e) => {
+    const ewh = engineerWorkdayHours[e.id] || {};
+    return total + allDays.reduce((s, d) => {
+      const defaultH = isWeekend(d) ? 0 : 8;
+      return s + (ewh[formatDateKey(d)] ?? defaultH);
+    }, 0);
+  }, 0);
   const teamTotalLogged = engineerStats.reduce((sum, e) =>
     sum + getWorkdays(allDays).reduce((s, d) => {
       const dayEntries = (allEntries[e.id] || {})[formatDateKey(d)] || [];

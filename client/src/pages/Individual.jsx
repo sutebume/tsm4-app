@@ -6,7 +6,7 @@ import {
 import RingsChart from '../components/RingsChart';
 import MiniCalendar from '../components/MiniCalendar';
 
-export default function Individual({ engineers, allEntries, workdayHours, onDayClick, user }) {
+export default function Individual({ engineers, allEntries, engineerWorkdayHours, onDayClick, user }) {
   const isEngineer = user?.role === 'engineer';
   const today = new Date();
   const currentCycleMonth = getCycleStartMonth(today);
@@ -31,6 +31,7 @@ export default function Individual({ engineers, allEntries, workdayHours, onDayC
   const weeks = getBillingCycleDatesFromMonth(cycleMonth);
   const engineer = engineers[activeEng];
   const entries = engineer ? (allEntries[engineer.id] || {}) : {};
+  const workdayHours = (engineer && engineerWorkdayHours[engineer.id]) || {};
 
   const weekPcts = weeks.map(days => calcWeekBillability(entries, workdayHours, days));
 

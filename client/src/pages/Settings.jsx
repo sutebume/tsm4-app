@@ -7,7 +7,7 @@ import { api } from '../api';
 
 const SECTION = { HOURS: 'hours', ENGINEERS: 'engineers', USERS: 'users', BACKUP: 'backup', REMINDER: 'reminder' };
 
-export default function Settings({ engineers, workdayHours, onSave, onEngineersChange, showToast }) {
+export default function Settings({ engineers, hoursGroups, onDataChange, showToast }) {
   const [section, setSection] = useState(SECTION.HOURS);
 
   return (
@@ -33,14 +33,10 @@ export default function Settings({ engineers, workdayHours, onSave, onEngineersC
       </div>
 
       {section === SECTION.HOURS && (
-        <WorkHoursSection
-          engineers={engineers}
-          workdayHours={workdayHours}
-          onSave={onSave}
-        />
+        <HoursGroupsSection hoursGroups={hoursGroups} onDataChange={onDataChange} showToast={showToast} />
       )}
       {section === SECTION.ENGINEERS && (
-        <EngineersSection onEngineersChange={onEngineersChange} showToast={showToast} />
+        <EngineersSection hoursGroups={hoursGroups} onDataChange={onDataChange} showToast={showToast} />
       )}
       {section === SECTION.USERS && (
         <UsersSection showToast={showToast} />
@@ -55,23 +51,36 @@ export default function Settings({ engineers, workdayHours, onSave, onEngineersC
   );
 }
 
-// ── Work Hours ──────────────────────────────────────────────
-function WorkHoursSection({ engineers, workdayHours, onSave }) {
+// ── Working Hours Groups ────────────────────────────────────────
+function HoursGroupsSection({ hoursGroups, onDataChange, showToast }) {
   const today = new Date();
   const currentCycleMonth = getCycleStartMonth(today);
 
-  // Local copy of all hours (across all cycles)
-  const [hours, setHours] = useState({});
-  const [engNames, setEngNames] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState(1);
   const [cycleMonth, setCycleMonth] = useState(currentCycleMonth);
+  const [hours, setHours] = useState({});
   const [saving, setSaving] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editGroupName, setEditGroupName] = useState('');
 
   const isCurrentCycle =
     cycleMonth.getFullYear() === currentCycleMonth.getFullYear() &&
     cycleMonth.getMonth() === currentCycleMonth.getMonth();
 
-  useEffect(() => { setHours({ ...workdayHours }); }, [workdayHours]);
-  useEffect(() => { setEngNames(engineers.map(e => ({ ...e }))); }, [engineers]);
+  // Sync hours when selected group or groups data changes
+  useEffect(() => {
+    const group = hoursGroups.find(g => g.id === selectedGroupId);
+    setHours(group ? { ...group.workdayHours } : {});
+  }, [selectedGroupId, hoursGroups]);
+
+  // If selected group was deleted, fall back to Default
+  useEffect(() => {
+    if (hoursGroups.length > 0 && !hoursGroups.find(g => g.id === selectedGroupId)) {
+      setSelectedGroupId(1);
+    }
+  }, [hoursGroups]);
 
   const weeks = getBillingCycleDatesFromMonth(cycleMonth);
   const allDays = weeks.flat();
@@ -84,14 +93,145 @@ function WorkHoursSection({ engineers, workdayHours, onSave }) {
     }, 0)
   );
 
-  const handleSave = async () => {
+  async function handleSaveHours() {
     setSaving(true);
-    await onSave(engNames, hours);
+    try {
+      await api.updateGroupWorkdayHours(selectedGroupId, hours);
+      await onDataChange();
+      showToast('Work hours saved ✓');
+    } catch (e) { showToast(e.message); }
     setSaving(false);
-  };
+  }
+
+  async function handleCreateGroup() {
+    if (!newGroupName.trim()) return;
+    try {
+      const g = await api.createHoursGroup(newGroupName.trim());
+      setNewGroupName('');
+      setCreatingGroup(false);
+      await onDataChange();
+      setSelectedGroupId(g.id);
+      showToast(`Group "${g.name}" created ✓`);
+    } catch (e) { showToast(e.message); }
+  }
+
+  async function handleRenameGroup(id) {
+    if (!editGroupName.trim()) return;
+    try {
+      await api.renameHoursGroup(id, editGroupName.trim());
+      setEditingGroupId(null);
+      await onDataChange();
+      showToast('Group renamed ✓');
+    } catch (e) { showToast(e.message); }
+  }
+
+  async function handleDeleteGroup(id, name) {
+    const group = hoursGroups.find(g => g.id === id);
+    const memberCount = group?.engineers?.length || 0;
+    const msg = memberCount > 0
+      ? `Delete "${name}"? Its ${memberCount} engineer(s) will be moved to the Default group.`
+      : `Delete "${name}"?`;
+    if (!confirm(msg)) return;
+    try {
+      await api.deleteHoursGroup(id);
+      await onDataChange();
+      setSelectedGroupId(1);
+      showToast(`Group "${name}" deleted ✓`);
+    } catch (e) { showToast(e.message); }
+  }
+
+  const selectedGroup = hoursGroups.find(g => g.id === selectedGroupId);
 
   return (
     <div>
+      {/* Group list */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>Working Hours Groups</div>
+        <button
+          onClick={() => setCreatingGroup(v => !v)}
+          style={{ fontSize: 12, fontWeight: 600, color: 'white', background: 'var(--red)', border: 'none', borderRadius: 8, padding: '6px 12px' }}
+        >
+          + New Group
+        </button>
+      </div>
+
+      {creatingGroup && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            autoFocus
+            type="text" placeholder="Group name (e.g. Manila, Singapore)"
+            value={newGroupName}
+            onChange={e => setNewGroupName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreateGroup()}
+            style={{ flex: 1, border: '1.5px solid var(--red)', borderRadius: 8, padding: '9px 12px', fontSize: 13 }}
+          />
+          <button onClick={handleCreateGroup} style={{ fontSize: 12, fontWeight: 600, color: 'white', background: 'var(--red)', border: 'none', borderRadius: 8, padding: '8px 14px' }}>Create</button>
+          <button onClick={() => { setCreatingGroup(false); setNewGroupName(''); }} style={{ fontSize: 12, color: 'var(--gray-500)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 12px' }}>Cancel</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+        {hoursGroups.map(g => (
+          <div
+            key={g.id}
+            onClick={() => { if (editingGroupId !== g.id) setSelectedGroupId(g.id); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+              borderRadius: 10, cursor: 'pointer',
+              background: selectedGroupId === g.id ? 'var(--red-light)' : 'var(--gray-50)',
+              border: `1.5px solid ${selectedGroupId === g.id ? 'var(--red-mid)' : 'var(--gray-200)'}`,
+            }}
+          >
+            {editingGroupId === g.id ? (
+              <>
+                <input
+                  autoFocus
+                  value={editGroupName}
+                  onChange={ev => setEditGroupName(ev.target.value)}
+                  onKeyDown={ev => ev.key === 'Enter' && handleRenameGroup(g.id)}
+                  onClick={ev => ev.stopPropagation()}
+                  style={{ flex: 1, border: '1.5px solid var(--red)', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+                />
+                <button onClick={ev => { ev.stopPropagation(); handleRenameGroup(g.id); }} style={{ fontSize: 12, fontWeight: 600, color: 'white', background: 'var(--red)', border: 'none', borderRadius: 6, padding: '4px 10px' }}>Save</button>
+                <button onClick={ev => { ev.stopPropagation(); setEditingGroupId(null); }} style={{ fontSize: 12, color: 'var(--gray-500)', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px' }}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: selectedGroupId === g.id ? 'var(--red)' : 'var(--gray-700)' }}>
+                  {g.name}
+                  {g.id === 1 && <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--gray-400)', fontWeight: 400 }}>default</span>}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                  {g.engineers?.length || 0} engineer{g.engineers?.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={ev => { ev.stopPropagation(); setEditingGroupId(g.id); setEditGroupName(g.name); }}
+                  style={{ fontSize: 11, color: 'var(--red)', border: '1px solid var(--red-mid)', borderRadius: 6, padding: '3px 8px', background: 'var(--red-light)' }}
+                >Edit</button>
+                <button
+                  onClick={ev => { ev.stopPropagation(); handleDeleteGroup(g.id, g.name); }}
+                  disabled={g.id === 1}
+                  style={{ fontSize: 11, color: g.id === 1 ? 'var(--gray-300)' : '#888', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '3px 8px', cursor: g.id === 1 ? 'not-allowed' : 'pointer' }}
+                >✕</button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Members display */}
+      {selectedGroup && (
+        <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 16 }}>
+          <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>Members: </span>
+          {selectedGroup.engineers?.length > 0
+            ? selectedGroup.engineers.map(e => e.name).join(', ')
+            : <span style={{ color: 'var(--gray-400)' }}>No engineers assigned</span>
+          }
+        </div>
+      )}
+
+      <div style={{ height: 1, background: 'var(--gray-200)', marginBottom: 16 }} />
+
       {/* Cycle navigator */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -156,15 +296,15 @@ function WorkHoursSection({ engineers, workdayHours, onSave }) {
         })}
       </div>
 
-      <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, opacity: saving ? 0.6 : 1 }}>
-        {saving ? 'Saving…' : 'Save Work Hours'}
+      <button onClick={handleSaveHours} disabled={saving} style={{ ...btnStyle, opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Saving…' : `Save Hours for "${selectedGroup?.name || ''}"`}
       </button>
     </div>
   );
 }
 
 // ── Engineers ────────────────────────────────────────────────
-function EngineersSection({ onEngineersChange, showToast }) {
+function EngineersSection({ hoursGroups, onDataChange, showToast }) {
   const [engineers, setEngineers] = useState([]);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -185,7 +325,7 @@ function EngineersSection({ onEngineersChange, showToast }) {
       await api.addEngineer(newName.trim());
       setNewName('');
       await load();
-      await onEngineersChange();
+      await onDataChange();
       showToast('Engineer added ✓');
     } catch (e) { showToast(e.message); }
     setLoading(false);
@@ -197,7 +337,7 @@ function EngineersSection({ onEngineersChange, showToast }) {
       await api.updateEngineers([{ id, name: editName.trim() }]);
       setEditingId(null);
       await load();
-      await onEngineersChange();
+      await onDataChange();
       showToast('Engineer updated ✓');
     } catch (e) { showToast(e.message); }
   }
@@ -207,8 +347,16 @@ function EngineersSection({ onEngineersChange, showToast }) {
     try {
       await api.deleteEngineer(id);
       await load();
-      await onEngineersChange();
+      await onDataChange();
       showToast('Engineer deleted ✓');
+    } catch (e) { showToast(e.message); }
+  }
+
+  async function handleGroupChange(engId, groupId) {
+    try {
+      await api.assignEngineerGroup(engId, parseInt(groupId));
+      await load();
+      await onDataChange();
     } catch (e) { showToast(e.message); }
   }
 
@@ -219,26 +367,43 @@ function EngineersSection({ onEngineersChange, showToast }) {
       {/* Existing engineers */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
         {engineers.map((e, i) => (
-          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', minWidth: 20 }}>{i + 1}</span>
-            {editingId === e.id ? (
-              <>
-                <input
-                  autoFocus
-                  value={editName}
-                  onChange={ev => setEditName(ev.target.value)}
-                  onKeyDown={ev => ev.key === 'Enter' && handleRename(e.id)}
-                  style={{ flex: 1, border: '1.5px solid var(--red)', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
-                />
-                <button onClick={() => handleRename(e.id)} style={{ fontSize: 12, fontWeight: 600, color: 'white', background: 'var(--red)', border: 'none', borderRadius: 6, padding: '5px 10px' }}>Save</button>
-                <button onClick={() => setEditingId(null)} style={{ fontSize: 12, color: 'var(--gray-500)', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '5px 8px' }}>Cancel</button>
-              </>
-            ) : (
-              <>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--gray-700)' }}>{e.name}</span>
-                <button onClick={() => { setEditingId(e.id); setEditName(e.name); }} style={{ fontSize: 11, color: 'var(--red)', border: '1px solid var(--red-mid)', borderRadius: 6, padding: '4px 8px', background: 'var(--red-light)' }}>Edit</button>
-                <button onClick={() => handleDelete(e.id, e.name)} style={{ fontSize: 11, color: '#888', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px' }}>✕</button>
-              </>
+          <div key={e.id} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', minWidth: 20 }}>{i + 1}</span>
+              {editingId === e.id ? (
+                <>
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={ev => setEditName(ev.target.value)}
+                    onKeyDown={ev => ev.key === 'Enter' && handleRename(e.id)}
+                    style={{ flex: 1, border: '1.5px solid var(--red)', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
+                  />
+                  <button onClick={() => handleRename(e.id)} style={{ fontSize: 12, fontWeight: 600, color: 'white', background: 'var(--red)', border: 'none', borderRadius: 6, padding: '5px 10px' }}>Save</button>
+                  <button onClick={() => setEditingId(null)} style={{ fontSize: 12, color: 'var(--gray-500)', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '5px 8px' }}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--gray-700)' }}>{e.name}</span>
+                  <button onClick={() => { setEditingId(e.id); setEditName(e.name); }} style={{ fontSize: 11, color: 'var(--red)', border: '1px solid var(--red-mid)', borderRadius: 6, padding: '4px 8px', background: 'var(--red-light)' }}>Edit</button>
+                  <button onClick={() => handleDelete(e.id, e.name)} style={{ fontSize: 11, color: '#888', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px' }}>✕</button>
+                </>
+              )}
+            </div>
+            {/* Hours group assignment row */}
+            {hoursGroups.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 8px', borderTop: '1px solid var(--gray-100)' }}>
+                <span style={{ fontSize: 11, color: 'var(--gray-500)', minWidth: 80 }}>Hours Group</span>
+                <select
+                  value={e.hours_group_id || 1}
+                  onChange={ev => handleGroupChange(e.id, ev.target.value)}
+                  style={{ flex: 1, border: '1px solid var(--gray-200)', borderRadius: 6, padding: '4px 8px', fontSize: 12, background: 'white' }}
+                >
+                  {hoursGroups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
         ))}

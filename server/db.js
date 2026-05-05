@@ -50,16 +50,45 @@ function initDB() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS working_hours_groups (
+      id   INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS group_workday_hours (
+      group_id INTEGER NOT NULL REFERENCES working_hours_groups(id),
+      date     TEXT    NOT NULL,
+      hours    REAL    NOT NULL,
+      PRIMARY KEY (group_id, date)
+    );
+  `);
+
   // Migrations — safe to run every time, ignored if column already exists
   const migrations = [
     `ALTER TABLE users ADD COLUMN engineer_id INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT NULL`,
     `ALTER TABLE entries ADD COLUMN ot TEXT NOT NULL DEFAULT 'no'`,
+    `ALTER TABLE engineers ADD COLUMN hours_group_id INTEGER REFERENCES working_hours_groups(id)`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
   }
+
+  // Seed Default hours group and migrate legacy workday_hours
+  const groupCount = db.prepare('SELECT COUNT(*) as c FROM working_hours_groups').get();
+  if (groupCount.c === 0) {
+    db.prepare('INSERT INTO working_hours_groups (id, name) VALUES (1, ?)').run('Default');
+    // Migrate existing workday_hours rows into group 1
+    const legacy = db.prepare('SELECT date, hours FROM workday_hours').all();
+    const insertGWH = db.prepare('INSERT OR IGNORE INTO group_workday_hours (group_id, date, hours) VALUES (1, ?, ?)');
+    const migrate = db.transaction(() => legacy.forEach(r => insertGWH.run(r.date, r.hours)));
+    migrate();
+  }
+
+  // Assign all engineers without a group to Default (id=1)
+  db.prepare('UPDATE engineers SET hours_group_id = 1 WHERE hours_group_id IS NULL').run();
 
   // Seed default admin/manager if no users exist
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get();

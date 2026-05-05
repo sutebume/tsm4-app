@@ -20,7 +20,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('individual');
   const [calendarEntry, setCalendarEntry] = useState(null);
   const [engineers, setEngineers] = useState([]);
-  const [workdayHours, setWorkdayHours] = useState({});
+  const [hoursGroups, setHoursGroups] = useState([]);
+  const [engineerWorkdayHours, setEngineerWorkdayHours] = useState({});
   const [allEntries, setAllEntries] = useState({});
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [loading, setLoading] = useState(true); // start true — checking token
@@ -51,14 +52,18 @@ export default function App() {
   async function loadAllData(currentUser) {
     setLoading(true);
     try {
-      // Always load engineers and workday hours
-      const [engs, wh] = await Promise.all([
+      // Load engineers and all hours groups (with per-group workday hours)
+      const [engs, groups] = await Promise.all([
         api.getEngineers(),
-        api.getWorkdayHours(),
+        api.getHoursGroupsWithHours(),
       ]);
 
-      const whMap = {};
-      wh.forEach(r => { whMap[r.date] = r.hours; });
+      // Build per-engineer workday hours map: { engineerId: { date: hours } }
+      const groupMap = Object.fromEntries(groups.map(g => [g.id, g.workdayHours]));
+      const engHours = {};
+      engs.forEach(e => {
+        engHours[e.id] = groupMap[e.hours_group_id] || groupMap[1] || {};
+      });
 
       // Fetch strategy:
       // ALL roles use /entries/all for Team tab aggregation
@@ -99,7 +104,8 @@ export default function App() {
 
       // Set all state at once — prevents partial renders
       setEngineers(engs);
-      setWorkdayHours(whMap);
+      setHoursGroups(groups);
+      setEngineerWorkdayHours(engHours);
       setAllEntries(entriesMap);
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -136,8 +142,9 @@ export default function App() {
     localStorage.removeItem('tsm4_token');
     setUser(null);
     setEngineers([]);
+    setHoursGroups([]);
+    setEngineerWorkdayHours({});
     setAllEntries({});
-    setWorkdayHours({});
     setActiveTab('individual');
     setCalendarEntry(null);
     setLoading(false);
@@ -190,7 +197,7 @@ export default function App() {
       return (
         <CalendarEntry
           {...calendarEntry}
-          workdayHours={workdayHours}
+          workdayHours={engineerWorkdayHours[calendarEntry.engineerId] || {}}
           onBack={() => setCalendarEntry(null)}
           onSave={async (entries) => {
             await api.saveEntries(calendarEntry.engineerId, calendarEntry.dateKey, entries);
@@ -206,7 +213,7 @@ export default function App() {
       <Individual
         engineers={engineers}
         allEntries={allEntries}
-        workdayHours={workdayHours}
+        engineerWorkdayHours={engineerWorkdayHours}
         user={user}
         onDayClick={(engineerId, dateKey, date, engineerName) =>
           setCalendarEntry({ engineerId, dateKey, date, engineerName })
@@ -214,21 +221,13 @@ export default function App() {
       />
     );
     if (activeTab === 'team') return (
-      <Team engineers={engineers} allEntries={allEntries} workdayHours={workdayHours} />
+      <Team engineers={engineers} allEntries={allEntries} engineerWorkdayHours={engineerWorkdayHours} />
     );
     if (activeTab === 'settings' && isAdmin) return (
       <Settings
         engineers={engineers}
-        workdayHours={workdayHours}
-        onSave={async (newEngineers, newHours) => {
-          await Promise.all([
-            api.updateEngineers(newEngineers),
-            api.updateWorkdayHours(newHours),
-          ]);
-          await loadAllData(user);
-          showToast('Settings saved ✓');
-        }}
-        onEngineersChange={() => loadAllData(user)}
+        hoursGroups={hoursGroups}
+        onDataChange={() => loadAllData(user)}
         showToast={showToast}
       />
     );

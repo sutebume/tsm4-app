@@ -86,6 +86,7 @@ async function runReminders() {
   // Get all engineers with linked users that have a telegram_id
   const engineers = db.prepare(`
     SELECT e.id as engineer_id, e.name as engineer_name,
+           e.hours_group_id,
            u.telegram_id, u.name as user_name
     FROM engineers e
     JOIN users u ON u.engineer_id = e.id
@@ -111,7 +112,8 @@ async function runReminders() {
 
     for (const d of cycleDays) {
       const key = formatDateKey(d);
-      const wh = db.prepare('SELECT hours FROM workday_hours WHERE date = ?').get(key);
+      const groupId = eng.hours_group_id || 1;
+      const wh = db.prepare('SELECT hours FROM group_workday_hours WHERE group_id = ? AND date = ?').get(groupId, key);
       const defaultHours = isWeekend(d) ? 0 : 8;
       const availableHours = wh ? wh.hours : defaultHours;
       if (availableHours === 0) continue;
