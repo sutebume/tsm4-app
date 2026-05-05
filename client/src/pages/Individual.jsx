@@ -3,6 +3,7 @@ import {
   getCycleStartMonth, getBillingCycleDatesFromMonth, getCycleMonths,
   getCycleLabel, offsetCycle, getWorkdays, formatDateKey, calcWeekBillability, isWeekend
 } from '../utils/billing';
+import { exportEngineerEntries, exportAllEngineers } from '../utils/exportExcel';
 import RingsChart from '../components/RingsChart';
 import MiniCalendar from '../components/MiniCalendar';
 
@@ -105,6 +106,34 @@ export default function Individual({ engineers, allEntries, engineerWorkdayHours
           disabled={isCurrentCycle}
           style={{ fontSize: 20, color: isCurrentCycle ? 'var(--gray-300)' : 'var(--red)', fontWeight: 700, padding: '0 4px', lineHeight: 1 }}
         >›</button>
+      </div>
+
+      {/* Export buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => exportEngineerEntries(engineer, entries, workdayHours, weeks, getCycleLabel(cycleMonth))}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '8px 12px', fontSize: 12, fontWeight: 600, borderRadius: 8,
+            background: 'var(--gray-50)', border: '1px solid var(--gray-200)', color: 'var(--gray-700)',
+            cursor: 'pointer',
+          }}
+        >
+          📥 Export {isEngineer ? 'My' : engineer?.name?.split(' ')[0] + "'s"} Entries
+        </button>
+        {!isEngineer && (
+          <button
+            onClick={() => exportAllEngineers(engineers, allEntries, engineerWorkdayHours, weeks, getCycleLabel(cycleMonth))}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px 12px', fontSize: 12, fontWeight: 600, borderRadius: 8,
+              background: 'var(--red)', border: 'none', color: 'white',
+              cursor: 'pointer',
+            }}
+          >
+            📥 Export All Engineers
+          </button>
+        )}
       </div>
 
       {/* Week chips */}
