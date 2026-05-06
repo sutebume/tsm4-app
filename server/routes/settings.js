@@ -44,8 +44,13 @@ router.post('/engineers', auth, adminOnly, (req, res) => {
 // DELETE /api/settings/engineers/:id
 router.delete('/engineers/:id', auth, adminOnly, (req, res) => {
   const db = getDB();
-  db.prepare('DELETE FROM engineers WHERE id = ?').run(req.params.id);
-  db.prepare('DELETE FROM entries WHERE engineer_id = ?').run(req.params.id);
+  const id = req.params.id;
+  // Delete entries first (FK constraint: entries.engineer_id → engineers.id)
+  const deleteAll = db.transaction(() => {
+    db.prepare('DELETE FROM entries WHERE engineer_id = ?').run(id);
+    db.prepare('DELETE FROM engineers WHERE id = ?').run(id);
+  });
+  deleteAll();
   res.json({ success: true });
 });
 
@@ -368,24 +373,6 @@ router.post('/restore', auth, adminOnly, (req, res) => {
   } catch (err) {
     console.error('Restore error:', err);
     res.status(500).json({ error: 'Restore failed: ' + err.message });
-  }
-});
-
-// POST /api/settings/test-reminder  — send test Telegram message to a user
-router.post('/test-reminder', auth, adminOnly, async (req, res) => {
-  const { telegram_id, name } = req.body;
-  if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
-  try {
-    const { sendMessage } = require('../telegram');
-    await sendMessage(telegram_id, [
-      `✅ <b>TSM4 Test Message</b>`,
-      ``,
-      `Hi <b>${name || 'there'}</b>! This is a test reminder from TSM4 Billability.`,
-      `Your Telegram is connected successfully! 🎉`,
-    ].join('\n'));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 

@@ -18,6 +18,14 @@ app.use('/api/settings', settingsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+// Global JSON error handler — ensures all errors return { error: message } JSON
+// instead of Express's default HTML error page
+app.use((err, req, res, next) => {
+  console.error('[TSM4 Error]', err.message);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
+});
+
 initDB();
 
 app.listen(PORT, () => {

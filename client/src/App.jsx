@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Login from './pages/Login';
 import Individual from './pages/Individual';
 import Team from './pages/Team';
@@ -6,6 +6,7 @@ import Settings from './pages/Settings';
 import CalendarEntry from './pages/CalendarEntry';
 import ChangePassword from './pages/ChangePassword';
 import { Toast, useToast } from './components/Toast';
+import { useInactivityTimer } from './hooks/useInactivityTimer';
 import { api } from './api';
 import './index.css';
 
@@ -138,7 +139,7 @@ export default function App() {
     setActiveTab('individual');
   }
 
-  function handleSignOut() {
+  const handleSignOut = useCallback(() => {
     localStorage.removeItem('tsm4_token');
     setUser(null);
     setEngineers([]);
@@ -148,7 +149,10 @@ export default function App() {
     setActiveTab('individual');
     setCalendarEntry(null);
     setLoading(false);
-  }
+  }, []);
+
+  // Inactivity timer — only active when user is logged in
+  const { showWarning, remaining, extend } = useInactivityTimer(handleSignOut, !!user);
 
   // Still checking token on mount
   if (loading && !user) {
@@ -287,6 +291,62 @@ export default function App() {
       </div>
 
       <Toast message={toast.message} show={toast.show} />
+
+      {/* Inactivity warning modal */}
+      {showWarning && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 200, padding: 24,
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 18, padding: 28,
+            maxWidth: 320, width: '100%', textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+          }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>⏱️</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 8 }}>
+              Still there?
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 20 }}>
+              You've been inactive. You'll be logged out in
+            </div>
+            {/* Countdown ring */}
+            <div style={{
+              width: 72, height: 72, borderRadius: '50%', margin: '0 auto 20px',
+              background: remaining > 20 ? 'var(--red-light)' : '#fff0f0',
+              border: `4px solid ${remaining > 20 ? 'var(--red)' : '#e74c3c'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'column',
+            }}>
+              <span style={{ fontSize: 22, fontWeight: 800, color: remaining > 20 ? 'var(--red)' : '#e74c3c', lineHeight: 1 }}>
+                {remaining}
+              </span>
+              <span style={{ fontSize: 9, color: 'var(--gray-400)', fontWeight: 600, letterSpacing: 0.5 }}>SEC</span>
+            </div>
+            <button
+              onClick={extend}
+              style={{
+                width: '100%', background: 'var(--red)', color: 'white',
+                border: 'none', borderRadius: 12, padding: '13px 0',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
+              }}
+            >
+              Stay Logged In
+            </button>
+            <button
+              onClick={handleSignOut}
+              style={{
+                width: '100%', background: 'transparent', color: 'var(--gray-500)',
+                border: '1px solid var(--gray-200)', borderRadius: 12, padding: '10px 0',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Log Out Now
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
