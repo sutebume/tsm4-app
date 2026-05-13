@@ -105,17 +105,39 @@ async function runReminders() {
     return;
   }
 
+  // Pre-load all group hours into a map for efficient lookup
+  // Structure: { [groupId]: { [dateKey]: hours } }
+  const allGroupHours = db.prepare('SELECT group_id, date, hours FROM group_workday_hours').all();
+  const hoursMap = {};
+  for (const row of allGroupHours) {
+    if (!hoursMap[row.group_id]) hoursMap[row.group_id] = {};
+    hoursMap[row.group_id][row.date] = row.hours;
+  }
+  const defaultGroupHours = hoursMap[1] || {}; // Default group (id=1) acts as global base
+
   let sent = 0;
 
   for (const eng of engineers) {
     const emptyDays = [];
+    const groupId = eng.hours_group_id || 1;
+    const groupHours = hoursMap[groupId] || {};
 
     for (const d of cycleDays) {
       const key = formatDateKey(d);
-      const groupId = eng.hours_group_id || 1;
-      const wh = db.prepare('SELECT hours FROM group_workday_hours WHERE group_id = ? AND date = ?').get(groupId, key);
-      const defaultHours = isWeekend(d) ? 0 : 8;
-      const availableHours = wh ? wh.hours : defaultHours;
+
+      // Determine available hours for this day:
+      // 1. Use engineer's group hours if explicitly set
+      // 2. Fall back to Default group hours (global holidays apply to everyone)
+      // 3. Fall back to: 0 for weekends, 8 for weekdays
+      let availableHours;
+      if (groupHours[key] !== undefined) {
+        availableHours = groupHours[key];
+      } else if (groupId !== 1 && defaultGroupHours[key] !== undefined) {
+        availableHours = defaultGroupHours[key];
+      } else {
+        availableHours = isWeekend(d) ? 0 : 8;
+      }
+
       if (availableHours === 0) continue;
 
       const entries = db.prepare(
